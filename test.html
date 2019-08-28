@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ROS Controller</title>
+    <script src='./node_modules/leaflet/dist/leaflet.js' type="text/javascript"></script>
+    <script src="./node_modules/localforage/dist/localforage.min.js" type="text/javascript"></script>
+    <script src="./node_modules/leaflet.offline/dist/bundle.js" type="text/javascript"></script>
+    <script src="./node_modules/leaflet-rotatedmarker/leaflet.rotatedMarker.js" type="text/javascript"></script>
+
+    <script src='./node_modules/leaflet-draw/dist/leaflet.draw.js' type='text/javascript'></script>
+
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+    <link rel="stylesheet" href="map-interface.css">
+    <link rel="stylesheet" href="./node_modules/leaflet/dist/leaflet.css"/>
+    <link rel="stylesheet" href="./node_modules/font-awesome/css/font-awesome.css">
+    <link rel="stylesheet" href="./node_modules/leaflet-draw/dist/leaflet.draw.css"/>
+    
+    <!-- ROS Server -->
+    <script type="text/javascript" src="http://static.robotwebtools.org/EventEmitter2/current/eventemitter2.min.js"></script>
+    <script type="text/javascript" src="http://static.robotwebtools.org/roslibjs/current/roslib.min.js"></script>
+
+</head>
+
+<body>
+<div class="row">
+
+    <div class="column">
+      <h2>Map Interface</h2>
+        <div class="map" id='map'>
+        </div>
+        <button class="btn btn-danger" id="remove_tiles">
+                <i class="fa fa-trash" aria-hidden="true"  title="Remove tiles"></i>
+        </button>
+
+        <button class="btn btn-warning" id="go_to_vehicle" onclick="goToVehicle()">
+                <i class="fa fa-compass" aria-hidden="true"  title="Go to vehicle"></i>
+        </button>
+
+        <p>Current storage: <span id="storage"></span> files
+        <p>Progress: <span id="progress"></span> / <span id="total"></span></p>
+
+    </div>
+
+    <div class="column">
+      <h2>Operation Panel</h2>
+        <div>
+          <div class="alert alert-primary" role="alert">
+                Please use the circle marker to mark your origin <br>
+                <span class="badge badge-primary">Origin Lat:  <span id='origin_lat'></span> </span>
+                <span class="badge badge-primary">Origin Long: <span id='origin_lng'></span></span>
+          </div>
+        </div>
+        
+        <div>
+            <button class="btn btn-secondary" type="button" onclick="sendWP('No!')">Send Waypoints</button>
+            <button class="btn btn-success" type="button" onclick="startVehicle(true)">Start Vehicle</button>
+            <button class="btn btn-warning" type="button" onclick="startVehicle(false)">Stop Vehicle</button>
+        </div>
+
+
+        <form>
+          <div class="form-group">
+              <label for="wp_select">Waypoint Lists</label>
+              <select size="1" class="form-control form-control-sm" id="wp_select"></select>
+          </div>
+        </form>
+
+        <div class="form-check">
+          <input class="form-check-input" type="radio" ng-model='result' ng-value='"wayPoints"' name="rdoResult" onclick="updateMode('Waypoint')" checked>
+          <label class="form-check-label" for="exampleRadios1">
+            Waypoints
+          </label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" ng-model='result' ng-value='"transect"' name="rdoResult" onclick="updateMode('Transect')">
+          <label class="form-check-label" for="exampleRadios2">
+            Transect
+          </label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" ng-model='result' ng-value='"transect"' name="rdoResult" onclick="updateMode('Smart')">
+          <label class="form-check-label" for="exampleRadios2">
+            Smart LiDAR (Caution! not as smart as you think)
+          </label>
+        </div>
+        
+        <div>
+
+          <div class="alert alert-dark" role="alert" style="width: 50%; float:left">
+              Measurements <br>
+              <span class="badge badge-light">GPS: <span id='gps_lat'></span> , <span id='gps_lng'></span> </span> <br>
+              <span class="badge badge-light">XY: <span id='gps_x'></span> , <span id='gps_y'></span> </span> <br>
+              <span class="badge badge-light">Velocity: <span id='gps_v'></span>  </span> <br>
+              <span class="badge badge-light">Water Velocity: </span> <br>
+              <span class="badge badge-light">Depth: </span> <br>
+              <span class="badge badge-light">Heading: <span id='heading'></span> </span> <br>
+
+          </div>
+          <div class="alert alert-dark" style="width: 50%; float:right">
+              Parameters <br>
+              <span class="badge badge-light">Waypoint target: </span> <br>
+              <span class="badge badge-light">Velcity target: </span> <br>
+              <span class="badge badge-light">Otherinfo: </span> <br>
+              <span class="badge badge-light">Otherinfo: </span> <br>
+              <span class="badge badge-light">{{test}}</span> <br>
+          </div>
+
+          <div class="input-group mb-3">
+              <input type="text" class="form-control" placeholder="Desired speed" aria-label="Desired speed" aria-describedby="basic-addon2">
+              <div class="input-group-append">
+                <span class="input-group-text" id="basic-addon2">m/s</span>
+              </div>
+        </div>
+        
+        <button class="btn btn-danger" type="button" (click)="sendWP('No!')">EMERGENCY STOP</button>
+        <button class="btn btn-secondary" type="button" (click)="saveWP()">Save Waypoints</button>
+
+        <div class="custom-file">
+          <input type="file" class="custom-file-input" id="validatedCustomFile" (change)="loadWP($event)"required>
+          <label class="custom-file-label" for="validatedCustomFile">{{filelabel}}</label>
+          <div class="invalid-feedback">Example invalid custom file feedback</div>
+        </div>
+
+       </div>
+    </div>
+  </div>
+
+  <!-- Leaflet Scripts -->
+  <script src="map-interface.js" type='text/javascript'></script>
+  
+  <script>
+    // ROS Connection script
+    var ros = null;
+    var isConnected = false;
+    var asv_url = 'localhost:9090';
+        function newRosConnection(){
+            if (isConnected) {
+                return;
+            }
+
+            if (ros) {
+                ros.close(); // Close old connection
+                ros = false;
+                return;
+            }
+
+            ros = new ROSLIB.Ros({ url: 'ws://' + asv_url });
+
+            ros.on('connection', () => {
+                console.log("I'm connected!");
+                onConnected();
+                isConnected = true;
+            });
+
+            ros.on('error', () => {
+                isConnected = false;
+            });
+
+            ros.on('close', () => {
+                isConnected = false;
+            });
+        }
+
+    // Keep trying to connect until it connects
+    setInterval(() => {
+      this.newRosConnection();
+      if (isConnected == false) {
+          alert('There is currently no connection to ' + asv_url);
+      } 
+    }, 1000); // [ms]
+
+    //////// Params and Topics
+    var originLat_param = null;
+    var originLng_param = null;
+    var nav_mode_param = null;
+    var startASV_param = null;
+    var gps_sub = null;
+    var imu_sub = null;
+
+    function onConnected() {
+        originLat_param = new ROSLIB.Param({
+            ros : ros,
+            name : '/originLat'
+        });
+
+        originLng_param = new ROSLIB.Param({
+            ros : ros,
+            name : '/originLon'
+        }); 
+
+        nav_mode_param = new ROSLIB.Param({
+            ros : ros,
+            name : '/nav_mode'
+        });
+
+        startASV_param = new ROSLIB.Param({
+            ros : ros,
+            name : '/run'
+        });
+
+        gps_sub = new ROSLIB.Topic({
+            ros : ros,
+            name : '/GPS/xy_coord',
+            messageType: 'gps_reader/GPS_data'
+        });
+
+        imu_sub = new ROSLIB.Topic({
+            ros : ros,
+            name : '/heading',
+            messageType: 'std_msgs/Float32'
+        })
+
+        gps_sub.subscribe(message=>updateGPS(message));
+        imu_sub.subscribe(message=>updateIMU(message));
+    }
+    
+    //////// Communication with ASV
+    
+    function sendWP() {
+        // Sending waypoints..
+        var origin = [0,0];
+        if (waypoints_id == null) {
+            alert('There is no available path');
+            return;
+        }
+
+        if (origin_id == null) {
+            origin = [0.0,0.0];
+        } else {
+            var origin_latlng = drawnItems.getLayer(origin_id).getLatLng();
+            origin = [origin_latlng.lat, origin_latlng.lng];
+        }
+        var polyline = drawnItems.getLayer(waypoints_id);
+        var path_latlngs = polyline.getLatLngs();
+        
+
+        // initialize the topic
+        var wp_topic = new ROSLIB.Topic({
+            ros,
+            name: '/ControlCenter/gps_wp',
+            messageType: 'gps_reader/GPS_WayPoints'
+        });
+
+        // create an array of way point messages
+        var wp_list = [];
+        var wp_dropDown = document.getElementById('wp_select');
+            // clear drop down menu
+            var i;
+            for(i = wp_dropDown.options.length - 1 ; i >= 0 ; i--)
+            {
+                // empty the drop down list
+                wp_dropDown.remove(i);
+            }
+
+        for (var i = 0; i < path_latlngs.length; ++i ) {
+            var xy = GPStoXY(origin[0], origin[1], path_latlngs[i].lat, path_latlngs[i].lng);
+            var wp_msg = new ROSLIB.Message(
+            {
+                origin_lat: origin[0],
+                origin_lon: origin[1],
+                latitude: path_latlngs[i].lat,
+                longitude: path_latlngs[i].lng,
+                x: xy[0],
+                y: xy[1]
+            });
+            var el = document.createElement("option");
+            el.textContent = String(xy);
+            el.value = xy;
+            wp_dropDown.appendChild(el);
+            wp_list.push(wp_msg);
+        }
+        var wp_list_msg = new ROSLIB.Message(
+            {
+                gps_wp: wp_list
+            }
+        );
+        wp_topic.publish(wp_list_msg);
+    }
+
+    function updateMode(data) {
+        nav_mode_param.set(data);
+    }
+
+    function startVehicle(data) {
+        startASV_param.set(data);
+    }
+
+    function updateGPS(message) {
+        var lat = message.latitude;
+        var lng = message.longitude;
+        var newLatLng = new L.LatLng(lat, lng);
+        asv_marker.setLatLng(newLatLng); // defined in the map-interface.js
+
+        var currentX = message.x;
+        var currentY = message.y;
+        var asv_velocity = Math.sqrt(Math.pow(message.x_vel,2) + Math.pow(message.y_vel, 2));
+
+        document.getElementById('gps_lat').innerHTML = String(lat);
+        document.getElementById('gps_lng').innerHTML = String(lng);
+        document.getElementById('gps_x').innerHTML = String(currentX);
+        document.getElementById('gps_y').innerHTML = String(currentY);
+        document.getElementById('gps_v').innerHTML = String(asv_velocity);
+    }
+
+    function updateIMU(message) {
+        var heading = message.data;
+        asv_marker.setRotationAngle(90 - this.heading/ Math.PI * 180);
+        document.getElementById('heading').innerHTML = String(heading);
+    }
+
+    function goToVehicle(){
+        mymap.setView(asv_marker.getLatLng(), 15);
+    }
+
+    /// Utility function
+    function GPStoXY( origLat, origLng, Latitude, Longitude) {
+        // convert gps coordinate to xy
+        var EARTH_RADIUS = 6371000;
+
+        var x = (Longitude - origLng)*Math.PI/180*Math.cos((Latitude + origLat)/2*Math.PI/180)*EARTH_RADIUS;
+        var y = (Latitude - origLat)*Math.PI/180*EARTH_RADIUS;
+        return [x, y];
+    }
+
+  </script>
+
+</body>
+</html>
+
+

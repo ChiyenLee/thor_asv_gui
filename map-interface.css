@@ -1,0 +1,42 @@
+.map{
+  height: 500px;
+  width: 100%;
+}
+
+.column {
+  float: left;
+  width: 50%;
+  height: 800px;
+  /* border-left: 10px; */
+  padding: 20px;
+}
+
+/* Clear floats after the columns */
+.row:after {
+  content: "";
+  display: table;
+  clear: both;
+}
+
+.wplist {
+  display: inline-block;
+  font-size: small;
+  color:black;
+  padding: 0.8em 0.7em 0 0.7em;
+  /* background-color:#405061; */
+  background-color: white;
+  line-height: 1em;
+  position: relative;
+  left: -1px;
+  top: -4px;
+  height: 1.8em;
+  margin-right: .8em;
+  border-radius: 4px 0 0 4px;
+}
+
+.list {
+  margin: 0 0 2em 0;
+  list-style-type: none;
+  padding: 0;
+  width: 15em;
+}
