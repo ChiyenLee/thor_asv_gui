@@ -1,6 +1,7 @@
 // global variables
 var waypoints_id = null; // id for the polyline way points
 var origin_id = null; // id for the origin
+var marker_id = null; // id for one single way point
 
 
 ///////// initialize map /////////
@@ -21,7 +22,7 @@ asv_marker.setRotationOrigin('center center');
 
 // initialize different layers
 var topLayer = L.tileLayer('https://api.tiles.mapbox.com/v4/{id}/{z}/{x}/{y}.png?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw', {
-    maxZoom: 18,
+    maxZoom: 19,
     attribution: 'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors, ' +
         '<a href="https://creativecommons.org/licenses/by-sa/2.0/">CC-BY-SA</a>, ' +
         'Imagery © <a href="https://www.mapbox.com/">Mapbox</a>',
@@ -33,6 +34,7 @@ var baseLayer = L.tileLayer.offline('http://{s}.tile.openstreetmap.org/{z}/{x}/{
     attribution: 'Map data {attribution.OpenStreetMap}',
     subdomains: 'abc',
     minZoom: 13,
+    maxZoom: 19
 }).addTo(mymap);
 
 var drawnItems = L.featureGroup().addTo(mymap); // group that stores drawn items
@@ -41,7 +43,7 @@ var drawnItems = L.featureGroup().addTo(mymap); // group that stores drawn items
 ///////Map Saving ////////
 //add buttons to save tiles in area viewed
 var control = L.control.savetiles(baseLayer, {
-    'zoomlevels': [13,16], //optional zoomlevels to save, default current zoomlevel
+    'zoomlevels': [16,17,18,19], //optional zoomlevels to save, default current zoomlevel
     'confirm': function(layer, succescallback) {
         if (window.confirm("Save " + layer._tilesforSave.length)) {
             succescallback();
@@ -109,7 +111,6 @@ mymap.addControl(new L.Control.Draw({
     }
 }));
 
-
 // When objects are created
 mymap.on(L.Draw.Event.CREATED, function (event) {
     var layer = event.layer;
@@ -125,9 +126,28 @@ mymap.on(L.Draw.Event.CREATED, function (event) {
             drawnItems.getLayer(waypoints_id).bindPopup("<b>There's already a path</b>").openPopup();
             drawnItems.removeLayer(layer);
         } else {
-            waypoints_id = drawnItems.getLayerId(layer);
+            if (current_mode == 'Waypoint' || (current_mode == "Transect" && layer.getLatLngs().length == 2 ) ) {
+                // if we're in way point mode or transect mode, then we update
+                if (marker_id != null) {
+                    // remove the marker if there is one
+                    drawnItems.removeLayer(marker_id);
+                    marker_id = null;
+                } 
+                waypoints_id = drawnItems.getLayerId(layer);
+                
+            } else if (current_mode == "Transect" && layer.getLatLngs().length != 2) {
+                // if we're in transect mode and way point length is too short, do not update
+                waypoints_id = null;
+                drawnItems.removeLayer(layer);
+                alert('Please use two points for transect mode');
+            } else {
+                // use only a marker for smart mode
+                waypoints_id = null;
+                drawnItems.removeLayer(layer);
+                alert('Please use a marker for Smart mode');
+            }
         }
-        
+
     } else if (layer instanceof L.CircleMarker) {
 
         // allows for only one origin at a time
@@ -143,6 +163,19 @@ mymap.on(L.Draw.Event.CREATED, function (event) {
 
         document.getElementById('origin_lat').innerHTML = String(layer.getLatLng().lat);
         document.getElementById('origin_lng').innerHTML = String(layer.getLatLng().lng);
+
+    } else if (layer instanceof L.Marker) {
+        if (marker_id != null) {
+            drawnItems.removeLayer(marker_id);
+            marker_id = drawnItems.getLayerId(layer);
+        } else {
+            marker_id = drawnItems.getLayerId(layer);
+        }
+
+        if (waypoints_id != null) {
+            drawnItems.removeLayer(waypoints_id);
+            waypoints_id = null;
+        }
 
     } else {
         drawnItems.removeLayer(layer);
@@ -160,8 +193,7 @@ mymap.on('draw:edited', function (e) {
 
             document.getElementById('origin_lat').innerHTML = String(layer.getLatLng().lat);
             document.getElementById('origin_lng').innerHTML = String(layer.getLatLng().lng);
-
-        }
+        } 
     });
 });
 

@@ -26,6 +26,7 @@
 
     <div class="column">
       <h2>Map Interface</h2>
+        <span class="badge badge-primary" id="connection_status">Connection Status  </span>  
         <div class="map" id='map'>
         </div>
         <button class="btn btn-danger" id="remove_tiles">
@@ -52,7 +53,7 @@
         </div>
         
         <div>
-            <button class="btn btn-secondary" type="button" onclick="sendWP('No!')">Send Waypoints</button>
+            <button class="btn btn-secondary" type="button" onclick="sendWP('No!')">Update Commands</button>
             <button class="btn btn-success" type="button" onclick="startVehicle(true)">Start Vehicle</button>
             <button class="btn btn-warning" type="button" onclick="startVehicle(false)">Stop Vehicle</button>
         </div>
@@ -66,19 +67,19 @@
         </form>
 
         <div class="form-check">
-          <input class="form-check-input" type="radio" ng-model='result' ng-value='"wayPoints"' name="rdoResult" onclick="updateMode('Waypoint')" checked>
+          <input class="form-check-input" type="radio" id="check_waypoint" name="rdoResult" onclick="updateMode('Waypoint')" checked>
           <label class="form-check-label" for="exampleRadios1">
             Waypoints
           </label>
         </div>
         <div class="form-check">
-          <input class="form-check-input" type="radio" ng-model='result' ng-value='"transect"' name="rdoResult" onclick="updateMode('Transect')">
+          <input class="form-check-input" type="radio" id="check_transect" name="rdoResult" onclick="updateMode('Transect')">
           <label class="form-check-label" for="exampleRadios2">
             Transect
           </label>
         </div>
         <div class="form-check">
-          <input class="form-check-input" type="radio" ng-model='result' ng-value='"transect"' name="rdoResult" onclick="updateMode('Smart')">
+          <input class="form-check-input" type="radio" id="check_smart" name="rdoResult" onclick="updateMode('Smart')">
           <label class="form-check-label" for="exampleRadios2">
             Smart LiDAR (Caution! not as smart as you think)
           </label>
@@ -91,28 +92,29 @@
               <span class="badge badge-light">GPS: <span id='gps_lat'></span> , <span id='gps_lng'></span> </span> <br>
               <span class="badge badge-light">XY: <span id='gps_x'></span> , <span id='gps_y'></span> </span> <br>
               <span class="badge badge-light">Velocity: <span id='gps_v'></span>  </span> <br>
-              <span class="badge badge-light">Water Velocity: </span> <br>
-              <span class="badge badge-light">Depth: </span> <br>
+              <span class="badge badge-light">Current Velocity: <span id='current_v'></span> </span> <br>
+              <span class="badge badge-light">Current Ang: <span id='current_ang'></span> </span> <br>
+              <span class="badge badge-light">Depth: <span id='water_depth'></span> </span> <br>
               <span class="badge badge-light">Heading: <span id='heading'></span> </span> <br>
 
           </div>
           <div class="alert alert-dark" style="width: 50%; float:right">
               Parameters <br>
-              <span class="badge badge-light">Waypoint target: </span> <br>
-              <span class="badge badge-light">Velcity target: </span> <br>
-              <span class="badge badge-light">Otherinfo: </span> <br>
-              <span class="badge badge-light">Otherinfo: </span> <br>
+              <span class="badge badge-light">Waypoint target: <span id='wp_target'></span></span> <br>
+              <span class="badge badge-light">Velocity target: <span id='v_ref_from_asv'></span></span> <br>
+              <span class="badge badge-light">Transect target1: <span id='target_point'></span></span> <br>
+              <span class="badge badge-light">Transect target2: <span id='prev_point'></span></span> <br>
               <span class="badge badge-light">{{test}}</span> <br>
           </div>
 
           <div class="input-group mb-3">
-              <input type="text" class="form-control" placeholder="Desired speed" aria-label="Desired speed" aria-describedby="basic-addon2">
+              <input type="text" class="form-control" id="v_ref_input" placeholder="Desired speed" aria-label="Desired speed" aria-describedby="desired_speed">
               <div class="input-group-append">
-                <span class="input-group-text" id="basic-addon2">m/s</span>
+                <span class="input-group-text" id="speed_inputlabel">m/s</span>
               </div>
         </div>
         
-        <button class="btn btn-danger" type="button" (click)="sendWP('No!')">EMERGENCY STOP</button>
+        <button class="btn btn-danger" type="button" onclick='updateEmergency(true)'>EMERGENCY STOP</button>
         <button class="btn btn-secondary" type="button" (click)="saveWP()">Save Waypoints</button>
 
         <div class="custom-file">
@@ -132,7 +134,10 @@
     // ROS Connection script
     var ros = null;
     var isConnected = false;
-    var asv_url = 'localhost:9090';
+    var on_first_connect = false; // indicate whether it is connected for the first time
+
+    var asv_url = '192.168.1.100:9090';
+    // var asv_url = 'localhost:9090'
         function newRosConnection(){
             if (isConnected) {
                 return;
@@ -161,12 +166,14 @@
             });
         }
 
-    // Keep trying to connect until it connects
+    // Keep trying to connect until succeed
     setInterval(() => {
-      this.newRosConnection();
+      newRosConnection();
       if (isConnected == false) {
-          alert('There is currently no connection to ' + asv_url);
-      } 
+         document.getElementById("connection_status").setAttribute('class', 'badge badge-danger');
+      } else {
+         document.getElementById("connection_status").setAttribute('class', 'badge badge-success');
+      }
     }, 1000); // [ms]
 
     //////// Params and Topics
@@ -174,8 +181,20 @@
     var originLng_param = null;
     var nav_mode_param = null;
     var startASV_param = null;
+    var I_reset_param = null;
+    var motor_sim_param = null;
+    var pi_speed_ref_param = null;
+    var transect_speed_ref_param = null;
+    var emergency_shutdown_param = null;
     var gps_sub = null;
     var imu_sub = null;
+    var adcp_sub = null; // adcp data
+    var transect_sub = null; // transect controller data
+    var pi_sub = null; // pi controller data
+    
+
+    var current_mode = null;
+    var speed_input = document.getElementById('v_ref_input'); // event listener added below
 
     function onConnected() {
         originLat_param = new ROSLIB.Param({
@@ -198,6 +217,31 @@
             name : '/run'
         });
 
+        I_reset_param = new ROSLIB.Param({
+            ros: ros,
+            name : '/I/reset'
+        });
+
+        motor_sim_param = new ROSLIB.Param({
+            ros : ros,
+            name : '/motor_control/sim'
+        });
+
+        pi_speed_ref_param = new ROSLIB.Param({
+            ros : ros,
+            name : '/v_ref'
+        });
+
+        transect_speed_ref_param = new ROSLIB.Param({
+            ros : ros,
+            name : '/transect/speed_ref'
+        });
+
+        emergency_shutdown_param = new ROSLIB.Param({
+            ros:ros,
+            name : '/emergency_shutdown'
+        })
+
         gps_sub = new ROSLIB.Topic({
             ros : ros,
             name : '/GPS/xy_coord',
@@ -210,31 +254,66 @@
             messageType: 'std_msgs/Float32'
         })
 
+        transect_sub = new ROSLIB.Topic({
+            ros : ros,
+            name : '/transect_controller/states',
+            messageType: 'asv_controller/Transect_states'
+        });
+
+        pi_sub = new ROSLIB.Topic({
+            ros : ros,
+            name : '/pi_controller/states',
+            messageType: 'asv_controller/PI_states'
+        });
+
+        adcp_sub = new ROSLIB.Topic({
+            ros : ros,
+            name : '/master_controller/adcp_data',
+            messageType: 'std_msgs/Float32MultiArray'
+        });
+        
+        nav_mode_param.get(function(value) {
+            current_mode = value;
+            if (current_mode == 'Transect') { document.getElementById('check_transect').checked = true}
+            else if (current_mode == 'Smart') { document.getElementById('check_smart').checked = true}
+            else if (current_mode == 'Waypoint') {document.getElementById('check_waypoint').checked=true};
+        });
+
+        updateMode(current_mode);
         gps_sub.subscribe(message=>updateGPS(message));
         imu_sub.subscribe(message=>updateIMU(message));
+        adcp_sub.subscribe(message=>updateADCP(message));
+        pi_sub.subscribe(message=>updateControlInfo(message));
+        transect_sub.subscribe(message=>updateControlInfo(message));
     }
     
     //////// Communication with ASV
-    
     function sendWP() {
         // Sending waypoints..
         var origin = [0,0];
-        if (waypoints_id == null) {
+        if (waypoints_id == null && marker_id == null) {
             alert('There is no available path');
             return;
         }
 
         if (origin_id == null) {
-            origin = [0.0,0.0];
+            origin = [0.0,0.0]; // set origin to zero if there's no origin
         } else {
-            var origin_latlng = drawnItems.getLayer(origin_id).getLatLng();
+            var origin_latlng = drawnItems.getLayer(origin_id).getLatLng(); // get origin from draw
             origin = [origin_latlng.lat, origin_latlng.lng];
         }
-        var polyline = drawnItems.getLayer(waypoints_id);
-        var path_latlngs = polyline.getLatLngs();
         
+        // if it's a single point then we use the marker, if it's a path
+        // then we use the polyline
+        var path_latlngs = [];
+        if (marker_id == null) {
+            var polyline = drawnItems.getLayer(waypoints_id); // get polyline from draw
+            path_latlngs = polyline.getLatLngs(); 
+        } else {
+            path_latlngs.push(drawnItems.getLayer(marker_id).getLatLng());
+        }
 
-        // initialize the topic
+        // Initialize GPS wp topic
         var wp_topic = new ROSLIB.Topic({
             ros,
             name: '/ControlCenter/gps_wp',
@@ -243,7 +322,7 @@
 
         // create an array of way point messages
         var wp_list = [];
-        var wp_dropDown = document.getElementById('wp_select');
+        var wp_dropDown = document.getElementById('wp_select'); // access dropdown menu
             // clear drop down menu
             var i;
             for(i = wp_dropDown.options.length - 1 ; i >= 0 ; i--)
@@ -264,7 +343,7 @@
                 y: xy[1]
             });
             var el = document.createElement("option");
-            el.textContent = String(xy);
+            el.textContent = String(xy[0].toFixed(2)) + ',' + String(xy[1].toFixed(2));
             el.value = xy;
             wp_dropDown.appendChild(el);
             wp_list.push(wp_msg);
@@ -274,15 +353,37 @@
                 gps_wp: wp_list
             }
         );
-        wp_topic.publish(wp_list_msg);
+
+        // double checking, if we're doing transect, we don't want path bigger than 2
+        if (current_mode == 'Transect' && wp_list.length != 2) {
+            alert('Please keep Transect point to 2. Defaulting back to Waypoints');
+            document.getElementById('check_transect').checked = false;
+            document.getElementById('check_waypoint').checked = true;
+            current_mode = 'Waypoint';
+            wp_topic.publish(wp_list_msg);
+            nav_mode_param.set(current_mode);
+            // drawnItems.removeLayer(waypoints_id);
+            // waypoints_id = null;
+        } else {
+            wp_topic.publish(wp_list_msg);
+            nav_mode_param.set(current_mode);
+        }
     }
 
     function updateMode(data) {
-        nav_mode_param.set(data);
+        current_mode = data;
     }
 
     function startVehicle(data) {
-        startASV_param.set(data);
+        if (data == true) {
+            startASV_param.set(true);
+            I_reset_param.set(true);
+            motor_sim_param.set(false);
+        } else {
+            startASV_param.set(false);
+            I_reset_param.set(false);
+            motor_sim_param.set(true);
+        }
     }
 
     function updateGPS(message) {
@@ -295,21 +396,67 @@
         var currentY = message.y;
         var asv_velocity = Math.sqrt(Math.pow(message.x_vel,2) + Math.pow(message.y_vel, 2));
 
-        document.getElementById('gps_lat').innerHTML = String(lat);
-        document.getElementById('gps_lng').innerHTML = String(lng);
-        document.getElementById('gps_x').innerHTML = String(currentX);
-        document.getElementById('gps_y').innerHTML = String(currentY);
-        document.getElementById('gps_v').innerHTML = String(asv_velocity);
+        document.getElementById('gps_lat').innerHTML = String(lat.toFixed(2));
+        document.getElementById('gps_lng').innerHTML = String(lng.toFixed(2));
+        document.getElementById('gps_x').innerHTML = String(currentX.toFixed(2));
+        document.getElementById('gps_y').innerHTML = String(currentY.toFixed(2));
+        document.getElementById('gps_v').innerHTML = String(asv_velocity.toFixed(2));
     }
 
     function updateIMU(message) {
         var heading = message.data;
-        asv_marker.setRotationAngle(90 - this.heading/ Math.PI * 180);
+        asv_marker.setRotationAngle(90 - heading/ Math.PI * 180);
         document.getElementById('heading').innerHTML = String(heading);
     }
 
+    function updateADCP(message) {
+        document.getElementById('current_v').innerHTML = String(message.data[0].toFixed(2));
+        document.getElementById('current_ang').innerHTML = String(message.data[1].toFixed(2));
+        document.getElementById('water_depth').innerHTML = String(message.data[2].toFixed(2));
+    }
+
+    function updateControlInfo(message) {
+        var mode_on_boat;
+        nav_mode_param.get(function(value) {
+            mode_on_boat = value;
+            if (mode_on_boat == 'Waypoint') {  
+                var target = message.state_ref;
+                document.getElementById('wp_target').innerHTML = String(target[0].toFixed(2)) + ',' + String(target[1].toFixed(2));
+                document.getElementById('v_ref_from_asv').innerHTML = String(message.v_ref.toFixed(2));
+            } else if (mode_on_boat == 'Transect') {
+                document.getElementById('target_point').innerHTML = String(message.target_point[0].toFixed(2)) + ',' + String(message.target_point[1].toFixed(2));
+                document.getElementById('prev_point').innerHTML = String(message.prev_point[0].toFixed(2)) + ',' + String(message.prev_point[1].toFixed(2));
+                document.getElementById('v_ref_from_asv').innerHTML = String(message.v_x_des.toFixed(2));
+            }
+        });
+
+    }
+
+    function updateEmergency(message) {
+        emergency_shutdown_param.set(message);
+    }
+
+    // Updating v_ref
+    speed_input.addEventListener("keyup", function(event) {
+    // Number 13 is the "Enter" key on the keyboard
+    if (event.keyCode === 13) {
+        // Cancel the default action, if needed
+        event.preventDefault();
+        v_ref = parseFloat(speed_input.value);
+
+        if (v_ref > 1.0) {
+            alert('Reference speed is too fast. Must be lower than 1.0');
+        } else if (v_ref < 0.0) {
+            alert('Please enter a positive speed');
+        } else {
+            pi_speed_ref_param.set(v_ref);
+            transect_speed_ref_param.set(v_ref);
+        }
+    }
+    });
+
     function goToVehicle(){
-        mymap.setView(asv_marker.getLatLng(), 15);
+        mymap.setView(asv_marker.getLatLng(), 16);
     }
 
     /// Utility function
